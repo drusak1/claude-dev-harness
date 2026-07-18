@@ -1,0 +1,4 @@
+# Keep LF in the repo regardless of the authoring platform: init.sh and the
+# hooks are run by bash, and CRLF breaks the shebang line on Linux/macOS.
+* text=auto eol=lf
+*.sh text eol=lf

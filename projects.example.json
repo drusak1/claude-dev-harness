@@ -1,0 +1,24 @@
+{
+  "_comment": [
+    "Copy to projects.json (./init.sh does this for you) and add your repos.",
+    "projects.json is gitignored, so your local layout stays private while the",
+    "harness itself can be published.",
+    "",
+    "Fields:",
+    "  name  - stable key; ledger rows reference it via --project",
+    "  path  - relative to this file, or absolute",
+    "  stack - free-form label, for the agent's benefit only",
+    "  check - the ONE command that verifies the project; exit 0 = green",
+    "",
+    "A fresh clone starts with an empty list on purpose: `make check` is green",
+    "before you have configured anything."
+  ],
+
+  "_example": [
+    { "name": "api",    "path": "../my-api",    "stack": "python",     "check": "make check" },
+    { "name": "web",    "path": "../my-web",    "stack": "typescript", "check": "npm run verify" },
+    { "name": "worker", "path": "../my-worker", "stack": "python",     "check": "pytest -q && ruff check ." }
+  ],
+
+  "projects": []
+}

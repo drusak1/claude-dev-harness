@@ -1,0 +1,34 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"$CLAUDE_PROJECT_DIR/scripts/hooks/session_start.py\""
+          }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "allow": [
+      "Read",
+      "Edit",
+      "Write",
+      "Bash(python scripts/ledger.py:*)",
+      "Bash(python scripts/projects.py:*)",
+      "Bash(python scripts/hooks/pre_change.py:*)",
+      "Bash(make check:*)",
+      "Bash(make queue:*)",
+      "Bash(make projects-list:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)"
+    ],
+    "deny": [
+      "Bash(rm -rf:*)",
+      "Bash(git push --force:*)"
+    ]
+  }
+}

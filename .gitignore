@@ -1,0 +1,8 @@
+# Your local repo layout stays private; the harness is public.
+projects.json
+
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.DS_Store
