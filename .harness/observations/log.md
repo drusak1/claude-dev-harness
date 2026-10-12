@@ -49,3 +49,10 @@ never number from memory.
 - Context: adding /weekly-review to the skills table and review/ to State
 - Issue: router grew past the cap /reflect sets.
 - Proposed fix: next /reflect weekly -- move the "Hard constraints" detail into docs/DISCIPLINES.md pointers.
+
+### OBS-005: agent cannot install user-level hooks itself
+- Date: 2026-10-12
+- Status: DONE -- scripts/install_review_hooks.py (dry run by default, --apply / --remove, tested to keep foreign keys and be idempotent); the user runs it
+- Context: harness / observability (ledger id 2)
+- Issue: writing ~/.claude/settings.json was denied by the auto-mode classifier as unauthorized persistence. Project-level hooks only fire inside this repo, so cross-project capture needs the user-level file.
+- Proposed fix: done. Any future global-config change ships as a user-run installer, not an agent write.

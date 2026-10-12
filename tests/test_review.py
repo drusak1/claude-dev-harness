@@ -16,6 +16,7 @@ import json
 import sys
 import tempfile
 import unittest
+import unittest.mock
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
@@ -357,6 +358,82 @@ class TestReportGate(ReviewTestCase):
         self.write_report(f"# Review {WEEK}\ncollector_sha: x\n" + _item(1))
         self.assertEqual(self.check(), 0)
         self.assertIn("SKIP", self.stdout.getvalue())
+
+
+# --------------------------------------------------------- hooks: snapshot
+class TestSnapshotAndStatus(ReviewTestCase):
+    def setUp(self) -> None:
+        super().setUp()
+        review.LIVE = review.SESSIONS / "_live"
+
+    def snapshot(self, payload: str) -> int:
+        with contextlib.redirect_stdout(io.StringIO()), \
+                unittest.mock.patch("sys.stdin", io.StringIO(payload)):
+            return review.main(["snapshot"])
+
+    def test_snapshot_copies_transcript_in_projects_layout(self):
+        self.write_session([_user("hello")])
+        path = self.src / "proj-a" / "s1.jsonl"
+        rc = self.snapshot(json.dumps({"transcript_path": str(path)}))
+        self.assertEqual(rc, 0)
+        self.assertTrue((review.LIVE / "proj-a" / "s1.jsonl").exists())
+
+    def test_snapshot_never_fails_the_session(self):
+        self.assertEqual(self.snapshot("not json"), 0)
+        self.assertEqual(self.snapshot(json.dumps(
+            {"transcript_path": "/nope/x.jsonl"})), 0)
+
+    def test_collect_merges_live_copy_when_source_was_cleaned(self):
+        # Claude Code deleted the original; the SessionEnd snapshot survives.
+        live_src = review.LIVE
+        (live_src / "proj-b").mkdir(parents=True)
+        (live_src / "proj-b" / "s9.jsonl").write_text(
+            json.dumps(_user("из снапшота")) + "\n", encoding="utf-8")
+        self.write_session([_user("из источника")])
+        rc = review.main(["collect", "--week", WEEK, "--source", str(self.src),
+                          "--source", str(live_src)])
+        self.assertEqual(rc, 0)
+        digest = (review.SESSIONS / WEEK / "digest.jsonl").read_text("utf-8")
+        self.assertIn("из снапшота", digest)
+        self.assertIn("из источника", digest)
+
+    def test_collect_prefers_the_longer_copy_of_one_session(self):
+        self.write_session([_user("первое")])
+        (review.LIVE / "proj-a").mkdir(parents=True)
+        (review.LIVE / "proj-a" / "s1.jsonl").write_text(
+            json.dumps(_user("первое")) + "\n" +
+            json.dumps(_user("второе")) + "\n", encoding="utf-8")
+        review.main(["collect", "--week", WEEK, "--source", str(self.src),
+                     "--source", str(review.LIVE)])
+        texts = [json.loads(l)["text"] for l in
+                 (review.SESSIONS / WEEK / "digest.jsonl")
+                 .read_text("utf-8").splitlines()]
+        self.assertEqual(texts, ["первое", "второе"])
+
+    # status ----------------------------------------------------------------
+    def status(self, today="2026-10-06") -> str:
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            review.main(["status", "--today", today])
+        return buf.getvalue()
+
+    def test_status_flags_overdue_review(self):
+        self.assertIn("2026-W40", self.status())
+        self.assertIn("/weekly-review", self.status())
+
+    def test_status_flags_pending_decisions(self):
+        self.write_report(f"# Review {WEEK}\ncollector_sha: x\n" + _item(1) +
+                          _item(2).replace("decision: pending",
+                                           "decision: accepted"))
+        out = self.status()
+        self.assertIn("1 item(s) await", out)
+        self.assertNotIn("/weekly-review for", out)
+
+    def test_status_is_silent_when_all_decided(self):
+        self.write_report(f"# Review {WEEK}\ncollector_sha: x\n" +
+                          _item(1).replace("decision: pending",
+                                           "decision: rejected"))
+        self.assertEqual(self.status(), "")
 
 
 if __name__ == "__main__":

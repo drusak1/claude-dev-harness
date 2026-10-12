@@ -13,6 +13,21 @@ review/
   archive/        quarantined rules, 30 days before final removal (monthly loop)
 ```
 
+## Running without remembering to
+
+```bash
+python scripts/install_review_hooks.py          # dry run: shows the merged settings
+python scripts/install_review_hooks.py --apply  # user-level hooks, every project
+```
+
+- `SessionEnd` -> `review.py snapshot`: copies the transcript into
+  `review/sessions/_live/` (no LLM). `collect` reads it next to
+  `~/.claude/projects`, so cleanup can no longer eat the evidence.
+- `SessionStart` -> `review.py status`: one reminder block when a report awaits
+  a decision or last week's review is missing; silent otherwise.
+- Weekly run: a scheduled task (desktop app) that fires `/weekly-review` —
+  added after the first pilot report.
+
 ## Who may change what
 
 | part | role | changed by |

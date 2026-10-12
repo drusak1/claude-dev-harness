@@ -19,8 +19,15 @@ their own falsifiable predictions, and gates the report.
   review.py check
       Gate over rules.md, rejected.md and reports/*.md. Nonzero on violation.
 
-Source of transcripts: --source, else env CDH_SESSIONS_SRC, else
-~/.claude/projects (every project; no project is special-cased).
+  review.py snapshot            (user-level SessionEnd hook; JSON on stdin)
+      Copy the ending session's transcript into review/sessions/_live/ so it
+      survives Claude Code's cleanup. Never fails the session.
+  review.py status [--today YYYY-MM-DD]   (user-level SessionStart hook)
+      Print a reminder iff a report awaits the user's decision or last week's
+      review was not written. Silent otherwise.
+
+Sources of transcripts: every --source given, else env CDH_SESSIONS_SRC, else
+~/.claude/projects + review/sessions/_live (every project; none special-cased).
 
 Pure stdlib. No network.
 """
@@ -40,6 +47,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 REVIEW = ROOT / "review"
 SESSIONS = REVIEW / "sessions"
+LIVE = SESSIONS / "_live"
 REPORTS = REVIEW / "reports"
 RULES = REVIEW / "rules.md"
 REJECTED = REVIEW / "rejected.md"
@@ -215,21 +223,34 @@ def _scan(path: Path, raw_name: str, start, end) -> tuple[list[dict], bool]:
 def cmd_collect(args) -> int:
     week = args.week or _prev_week()
     start, end = _week_bounds(week)
-    src = Path(args.source or os.environ.get("CDH_SESSIONS_SRC")
-               or Path.home() / ".claude" / "projects")
-    if not src.is_dir():
-        print(f"REJECTED: transcript source {src} does not exist.\n"
+    if args.source:
+        sources = [Path(x) for x in args.source]
+    elif os.environ.get("CDH_SESSIONS_SRC"):
+        sources = [Path(os.environ["CDH_SESSIONS_SRC"])]
+    else:
+        sources = [Path.home() / ".claude" / "projects", LIVE]
+    sources = [x for x in sources if x.is_dir()]
+    if not sources:
+        print("REJECTED: no transcript source exists.\n"
               "  FIX: pass --source DIR or set CDH_SESSIONS_SRC.",
               file=sys.stderr)
         return 1
+    # One session can exist in several sources (original + SessionEnd
+    # snapshot); the longer copy is the more complete one.
+    candidates: dict[str, Path] = {}
+    for src in sources:
+        for path in src.glob("*/*.jsonl"):
+            name = f"{path.parent.name}__{path.name}"
+            if (name not in candidates
+                    or path.stat().st_size > candidates[name].stat().st_size):
+                candidates[name] = path
     out = SESSIONS / week
     raw_dir = out / "raw"
     raw_dir.mkdir(parents=True, exist_ok=True)
 
     signals: list[dict] = []
     files: list[str] = []
-    for path in sorted(src.glob("*/*.jsonl")):
-        raw_name = f"{path.parent.name}__{path.name}"
+    for raw_name, path in sorted(candidates.items()):
         sig, in_window = _scan(path, raw_name, start, end)
         if not in_window:
             continue
@@ -244,7 +265,7 @@ def cmd_collect(args) -> int:
     for s in signals:
         k = s["kind"] + ("+correction" if s.get("correction_hint") else "")
         counts[k] = counts.get(k, 0) + 1
-    meta = {"week": week, "source": str(src), "collector_sha": _sha_self(),
+    meta = {"week": week, "sources": [str(x) for x in sources], "collector_sha": _sha_self(),
             "collected_at": dt.datetime.now(dt.timezone.utc).isoformat(),
             "files": files, "counts": counts}
     (out / "meta.json").write_text(json.dumps(meta, indent=2), "utf-8")
@@ -476,6 +497,46 @@ def cmd_check(_args) -> int:
     return 0
 
 
+# --------------------------------------------------------------------- hooks
+def cmd_snapshot(_args) -> int:
+    """SessionEnd: copy the transcript. Any failure is swallowed -- a hook
+    must never break the user's session."""
+    try:
+        payload = json.loads(sys.stdin.read() or "{}")
+        path = Path(payload["transcript_path"])
+        dest = LIVE / path.parent.name / path.name
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(path, dest)
+    except Exception as e:  # noqa: BLE001
+        print(f"review snapshot skipped: {e}", file=sys.stderr)
+    return 0
+
+
+def cmd_status(args) -> int:
+    """SessionStart: one reminder block, or nothing."""
+    try:
+        today = (dt.date.fromisoformat(args.today) if args.today
+                 else dt.date.today())
+        lines = []
+        for path in sorted(REPORTS.glob("*.md")) if REPORTS.exists() else []:
+            pending = [it["_id"] for it in _blocks(path, "##", r"P\d+")
+                       if it.get("decision") == "pending"]
+            if pending:
+                lines.append(f"  review {path.stem}: {len(pending)} item(s) "
+                             f"await the user's decision ({', '.join(pending)})"
+                             " -> ask accept/reject/modify, then /review-apply")
+        week = _prev_week(today)
+        if not (REPORTS / f"{week}.md").exists():
+            lines.append(f"  /weekly-review for {week} not done -> offer to "
+                         "run it (it only proposes; nothing is applied)")
+        if lines:
+            print("WEEKLY-REVIEW (claude-dev-harness):")
+            print("\n".join(lines))
+    except Exception as e:  # noqa: BLE001
+        print(f"review status skipped: {e}", file=sys.stderr)
+    return 0
+
+
 # ----------------------------------------------------------------------- cli
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="review.py", description=__doc__,
@@ -483,14 +544,17 @@ def main(argv: list[str] | None = None) -> int:
     sub = p.add_subparsers(dest="cmd", required=True)
     c = sub.add_parser("collect", help="copy transcripts + build the digest")
     c.add_argument("--week")
-    c.add_argument("--source")
+    c.add_argument("--source", action="append")
     a = sub.add_parser("audit", help="audit rules against the digests")
     a.add_argument("--week")
     a.add_argument("--json", action="store_true")
     sub.add_parser("check", help="gate rules / rejected / reports")
+    sub.add_parser("snapshot", help="SessionEnd hook: copy the transcript")
+    st = sub.add_parser("status", help="SessionStart hook: pending reminders")
+    st.add_argument("--today")
     args = p.parse_args(argv)
-    return {"collect": cmd_collect, "audit": cmd_audit,
-            "check": cmd_check}[args.cmd](args)
+    return {"collect": cmd_collect, "audit": cmd_audit, "check": cmd_check,
+            "snapshot": cmd_snapshot, "status": cmd_status}[args.cmd](args)
 
 
 if __name__ == "__main__":
