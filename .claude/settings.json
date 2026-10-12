@@ -24,11 +24,16 @@
       "Bash(make projects-list:*)",
       "Bash(git status:*)",
       "Bash(git diff:*)",
-      "Bash(git log:*)"
+      "Bash(git log:*)",
+      "Bash(python scripts/review.py:*)",
+      "Bash(make review-check:*)",
+      "Bash(make review-collect:*)"
     ],
     "deny": [
       "Bash(rm -rf:*)",
-      "Bash(git push --force:*)"
+      "Bash(git push --force:*)",
+      "Edit(/review/sessions/**)",
+      "Write(/review/sessions/**)"
     ]
   }
 }

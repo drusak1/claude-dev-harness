@@ -69,6 +69,7 @@ clock-in  ->  (new project? run /project-recon FIRST)  ->  pick ONE approach (WI
 | `/approach-scout` | on a blocked class or a ceiling claim — propose a DIFFERENT objective |
 | `/handoff` | end of session — verify, record, commit |
 | `/reflect` | turn frictions into harness fixes |
+| `/weekly-review` → `/review-apply` | Mondays: propose ≤5 rule edits from the user's corrections; apply only after their decision |
 
 ## State
 
@@ -78,3 +79,4 @@ clock-in  ->  (new project? run /project-recon FIRST)  ->  pick ONE approach (WI
 - `registry/queue.jsonl` — pending forced scouts / ceiling re-challenges.
 - `projects/<name>/` — per-project `brief.md`, `PROGRESS.md`, `DECISIONS.md`.
 - `.harness/observations/log.md` — the improvement backlog.
+- `review/` — instruction rules + weekly reports (`review/README.md`).

@@ -6,3 +6,6 @@ __pycache__/
 .venv/
 venv/
 .DS_Store
+
+# Weekly review: raw transcripts are private and large.
+review/sessions/
